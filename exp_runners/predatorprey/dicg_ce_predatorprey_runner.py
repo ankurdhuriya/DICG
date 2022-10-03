@@ -90,7 +90,7 @@ def run(args):
                 other_agent_visible=bool(args.agent_visible)
             )
             env = GarageEnv(env)
-
+            
             runner = LocalRunnerWrapper(
                 ctxt,
                 eval=args.eval_during_training,
@@ -224,11 +224,11 @@ if __name__ == '__main__':
     parser.add_argument('--eval_epoch_freq', type=int, default=5)
     # Env
     parser.add_argument('--max_env_steps', type=int, default=200)
-    parser.add_argument('--grid_size', type=int, default=10)
+    parser.add_argument('--grid_size', type=int, default=12)
     parser.add_argument('--n_agents', '-n', type=int, default=8)
     parser.add_argument('--n_preys', type=int, default=8)
     parser.add_argument('--step_cost', type=float, default=-0.1)
-    parser.add_argument('--penalty', type=float, default=-0.5)
+    parser.add_argument('--penalty', type=float, default=-1.25)
     parser.add_argument('--capture_reward', type=float, default=10)
     parser.add_argument('--agent_visible', type=int, default=1)
     # Algo

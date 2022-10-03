@@ -2,6 +2,7 @@ from select import select
 import gym
 from gym import spaces
 from ..utils.action_space import MultiAgentActionSpace
+from ..utils.observation_space import MultiAgentObservationSpace
 from ..utils.draw_hex import draw_grid
 
 import random
@@ -31,7 +32,7 @@ class PredatorPrey(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
     
     def __init__(self, grid_shape=(6, 8), n_agents=4, n_preys=2, prey_move_probs=(0.175, 0.175, 0.175, 0.175, 0.3),
-                 penalty=-1.25, step_cost=-0.01, prey_capture_reward=10, max_steps=100) -> None:
+                 full_observable=False, penalty=-1.25, step_cost=-0.01, prey_capture_reward=10, max_steps=100) -> None:
         super(PredatorPrey).__init__()
 
         self._grid_shape = grid_shape
@@ -42,7 +43,7 @@ class PredatorPrey(gym.Env):
         self._penalty = penalty
         self._step_cost = step_cost
         self._prey_capture_reward = prey_capture_reward
-        self._agent_view_mask = (5, 5)
+        self._agent_view_mask = (4, 6)
 
         self.action_space = MultiAgentActionSpace([spaces.Discrete(7) for _ in range(self.n_agents)])
         self.agent_pos = {_: None for _ in range(self.n_agents)}
@@ -54,6 +55,17 @@ class PredatorPrey(gym.Env):
         self._agent_dones = [False for _ in range(self.n_agents)]
         self._prey_move_probs = prey_move_probs
         self.viewer = None
+        self.full_observable = full_observable
+
+        # agent pos (2), prey (25), step (1)
+        mask_size = np.prod(self._agent_view_mask)
+        self._obs_high = np.array([1., 1.] + [1.] * mask_size + [1.0])
+        self._obs_low = np.array([0., 0.] + [0.] * mask_size + [0.0])
+        if self.full_observable:
+            self._obs_high = np.tile(self._obs_high, self.n_agents)
+            self._obs_low = np.tile(self._obs_low, self.n_agents)
+        self.observation_space = MultiAgentObservationSpace([spaces.Box(self._obs_low, self._obs_high) for _ in range(self.n_agents)])
+
 
         self._total_episode_reward = None
     
@@ -92,9 +104,11 @@ class PredatorPrey(gym.Env):
                 if self._prey_alive[prey_i]:
                     for _ in range(5):
                         _move = np.random.choice(len(self._prey_move_probs), 1, p=self._prey_move_probs)[0]
-                        if self._neighbour_agents(self.__next_pos(self.prey_pos[prey_i], _move)) == 0:
+                        next_pos = self.__next_pos(self.prey_pos[prey_i], _move)
+                        if next_pos and self._neighbour_agents(next_pos) == 0:
                             prey_move = _move
                             break
+                        
                         prey_move = 6 if prey_move is None else prey_move
 
                     self.__update_prey_pos(prey_i, prey_move)
@@ -161,8 +175,8 @@ class PredatorPrey(gym.Env):
 
             _prey_pos = []
 
-            for i in range(6):
-                _prey_pos.append(self.find_coords_in_direction(pos, i, 4))
+            for i in range(self._agent_view_mask[1]):
+                _prey_pos.append(self.find_prey_in_direction(pos, i, self._agent_view_mask[0]))
             
             _agent_i_obs += np.array(_prey_pos).flatten().tolist() # adding prey po
             _agent_i_obs += [self._step_count / self._max_steps]  # adding time
@@ -190,24 +204,38 @@ class PredatorPrey(gym.Env):
             self.__update_prey_view(prey_i)
 
         self.__draw_base_img()
-        self._base_img.show()
+        # self._base_img.show()
 
     def __draw_base_img(self):
         self._base_img = draw_grid(self._grid_shape, self._full_obs, fill='white')
 
-    def find_coords_in_direction(self, pos, direction, distance):
-        coords = [0]*distance
+    def find_prey_in_direction(self, pos, direction, distance):
+        prey_pos = [0]*distance
 
         for i in range(distance):
             next_pos = self.__next_pos(pos, direction)
             if next_pos:
                 pos = next_pos
                 if PRE_IDS['prey'] in self._full_obs[pos[0]][pos[1]]:
-                    coords[i] = 1
+                    prey_pos[i] = 1
             else:
                 break
         
-        return coords
+        return prey_pos
+
+    def find_agent_in_direction(self, pos, direction, distance):
+        agent_pos = [0]*distance
+
+        for i in range(distance):
+            next_pos = self.__next_pos(pos, direction)
+            if next_pos:
+                pos = next_pos
+                if PRE_IDS['agent'] in self._full_obs[pos[0]][pos[1]]:
+                    agent_pos[i] = 1
+            else:
+                break
+        
+        return agent_pos
 
 
     def __move_top(self, pos):
